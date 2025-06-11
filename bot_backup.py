@@ -315,8 +315,7 @@ class BinanceFuturesScalpingBot:
         except Exception as e:
             logger.error(f"Error getting price: {e}")
             return None
-        
-    def get_symbol_info(self):
+      def get_symbol_info(self):
         """Get symbol information for precision and filters"""
         try:
             response = requests.get(f"{self.base_url}/fapi/v1/exchangeInfo", timeout=10)
@@ -518,7 +517,7 @@ class BinanceFuturesScalpingBot:
                 headers=headers,
                 timeout=10
             )
-            if response.status_code == 200:
+              if response.status_code == 200:
                 balances = response.json()
                 for balance in balances:
                     if balance['asset'] == 'USDT':
@@ -553,40 +552,29 @@ class BinanceFuturesScalpingBot:
                         min_qty = float(filter_info['minQty'])
                         max_qty = float(filter_info['maxQty'])
                         break
-                    if step_size:
-                        # Calculate precision from step size
-                        if step_size >= 1:
-                            precision = 0
-                        else:
-                            precision = len(str(step_size).split('.')[-1].rstrip('0'))
-                        
-                        # Round quantity to step size
-                        quantity = round(quantity / step_size) * step_size
-                        
-                        # Round to appropriate decimal places
-                        quantity = round(quantity, precision)
-                        
-                        # Ensure minimum quantity requirement
-                        if min_qty and quantity < min_qty:
-                            quantity = min_qty
-                        
-                        # Check minimum notional value (critical for SUIUSDT - requires 5.0 USDT minimum)
-                        notional_value = quantity * price
-                        min_notional = 5.0  # SUIUSDT minimum notional value
-                        if notional_value < min_notional:
-                            # Increase quantity to meet minimum notional
-                            required_quantity = min_notional / price
-                            quantity = round(required_quantity / step_size) * step_size
-                            quantity = round(quantity, precision)
-                            quantity = max(quantity, min_qty) if min_qty else quantity
-                            notional_value = quantity * price
-                        
-                        # Ensure maximum quantity requirement
-                        if max_qty and quantity > max_qty:
-                            quantity = max_qty
-                        
-                        logger.info(f"📊 Position size: {quantity} {self.symbol} (notional: {notional_value:.2f} USDT)")
-                        return quantity
+                
+                if step_size:
+                    # Calculate precision from step size
+                    if step_size >= 1:
+                        precision = 0
+                    else:
+                        precision = len(str(step_size).split('.')[-1].rstrip('0'))
+                    
+                    # Round quantity to step size
+                    quantity = round(quantity / step_size) * step_size
+                    
+                    # Round to appropriate decimal places
+                    quantity = round(quantity, precision)
+                    
+                    # Ensure minimum quantity requirement
+                    if min_qty and quantity < min_qty:
+                        quantity = min_qty
+                    
+                    # Ensure maximum quantity requirement
+                    if max_qty and quantity > max_qty:
+                        quantity = max_qty
+                    
+                    logger.debug(f"Position size calculation: {quantity} (step: {step_size}, min: {min_qty}, precision: {precision})")
             
             # Final fallback minimum
             return max(quantity, 0.001)
