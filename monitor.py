@@ -227,24 +227,165 @@ def export_detailed_analysis():
     print("\nSummary Statistics:")
     print(df.groupby('exit_reason')['profit_pct'].agg(['count', 'mean', 'sum']).round(2))
 
+def query_live_bot_status():
+    """Query live bot status and recent activity"""
+    print("\n🤖 LIVE BOT STATUS")
+    print("=" * 40)
+    
+    # Get the most recent bot session
+    recent_session = collection.find_one({
+        "type": "bot_startup"
+    }, sort=[("timestamp", -1)])
+    
+    if not recent_session:
+        print("No bot sessions found")
+        return
+    
+    session_id = recent_session['session_id']
+    startup_time = recent_session['timestamp']
+    
+    print(f"Active Session: {session_id}")
+    print(f"Started: {startup_time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+    
+    # Calculate running time with timezone awareness
+    if startup_time.tzinfo is None:
+        startup_time = startup_time.replace(tzinfo=timezone.utc)
+    
+    running_time = (datetime.now(timezone.utc) - startup_time).total_seconds() / 60
+    print(f"Running for: {running_time:.1f} minutes")
+    
+    # Check for recent orders (last 5 minutes)
+    recent_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    recent_orders = list(collection.find({
+        "session_id": session_id,
+        "type": "trading_order",
+        "timestamp": {"$gte": recent_time}
+    }).sort("timestamp", -1))
+    
+    if recent_orders:
+        print(f"\nRecent Orders (last 5 minutes): {len(recent_orders)}")
+        for order in recent_orders[:3]:
+            status = "✅" if order.get('success') else "❌"
+            side = order['order_data']['side']
+            qty = order['order_data']['quantity']
+            price = order['current_price']
+            print(f"  {status} {side} {qty} at {price:.4f}")
+    else:
+        print("\nNo recent orders (last 5 minutes)")
+    
+    # Check for recent position changes
+    recent_positions = list(collection.find({
+        "session_id": session_id,
+        "type": "position_change",
+        "timestamp": {"$gte": recent_time}
+    }).sort("timestamp", -1))
+    
+    if recent_positions:
+        print(f"\nRecent Position Changes: {len(recent_positions)}")
+        for pos in recent_positions[:3]:
+            action = pos['action']
+            reason = pos.get('reason', '')
+            print(f"  📊 {action}: {reason}")
+
+def query_current_session_stats():
+    """Query statistics for the current bot session"""
+    print("\n📊 CURRENT SESSION STATS")
+    print("=" * 40)
+    
+    # Get the most recent bot session
+    recent_session = collection.find_one({
+        "type": "bot_startup"
+    }, sort=[("timestamp", -1)])
+    
+    if not recent_session:
+        print("No active bot sessions found")
+        return
+    
+    session_id = recent_session['session_id']
+    
+    # Count orders in this session
+    session_orders = list(collection.find({
+        "session_id": session_id,
+        "type": "trading_order",
+        "success": True
+    }))
+    
+    # Count trades in this session
+    session_trades = list(collection.find({
+        "session_id": session_id,
+        "type": "trade_close"
+    }))
+    
+    buy_orders = len([o for o in session_orders if o['order_data']['side'] == 'BUY'])
+    sell_orders = len([o for o in session_orders if o['order_data']['side'] == 'SELL'])
+    
+    print(f"Session Orders: {len(session_orders)} (Buy: {buy_orders}, Sell: {sell_orders})")
+    print(f"Session Trades Closed: {len(session_trades)}")
+    
+    if session_trades:
+        profitable_trades = len([t for t in session_trades if t['profit_pct'] > 0])
+        session_pnl = sum(t['profit_pct'] for t in session_trades)
+        print(f"Session Win Rate: {profitable_trades}/{len(session_trades)} ({profitable_trades/len(session_trades)*100:.1f}%)")
+        print(f"Session P&L: {session_pnl:.2f}%")
+
 # Example usage
 if __name__ == "__main__":
+    import time
+    import os
+    
+    # Monitoring settings
+    refresh_interval = int(os.getenv('MONITOR_REFRESH_INTERVAL', '30'))  # seconds
+    
+    print("🔍 MONGODB TRADE CLOSURE MONITORING")
+    print("=" * 50)
+    print(f"📊 Refreshing every {refresh_interval} seconds")
+    print("Press Ctrl+C to stop monitoring")
+    print()
+    
     try:
-        print("🔍 MONGODB TRADE CLOSURE ANALYSIS")
-        print("=" * 50)
+        while True:
+            # Clear screen (works on both Windows and Unix)
+            if os.name == 'nt':  # Windows
+                os.system('cls')
+            else:  # Unix/Linux/MacOS
+                os.system('clear')
+            
+            print(f"🔍 MONGODB TRADE CLOSURE ANALYSIS - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print("=" * 70)
+            
+            try:                # Run live status functions first
+                query_live_bot_status()
+                query_current_session_stats()
+                
+                # Run all analysis functions
+                query_profit_taking_events()
+                query_stop_loss_events()
+                query_by_position_type("LONG")
+                query_by_position_type("SHORT")
+                query_trades_by_timeframe(24)  # Last 24 hours
+                query_performance_metrics()
+                
+                print(f"\n🔄 Next update in {refresh_interval} seconds... (Press Ctrl+C to stop)")
+                
+            except Exception as e:
+                print(f"❌ Error running analysis: {e}")
+                print(f"🔄 Retrying in {refresh_interval} seconds...")
+            
+            # Wait before next refresh
+            time.sleep(refresh_interval)
+            
+    except KeyboardInterrupt:
+        print("\n\n⏹️ Monitoring stopped by user")
         
-        # Run all analysis functions
-        query_profit_taking_events()
-        query_stop_loss_events()
-        query_by_position_type("LONG")
-        query_by_position_type("SHORT")
-        query_trades_by_timeframe(24)  # Last 24 hours
-        query_performance_metrics()
-        
-        # Optionally export detailed analysis
-        export_detailed_analysis()
-        
+        # Optionally export final detailed analysis
+        try:
+            print("\n💾 Generating final detailed analysis...")
+            export_detailed_analysis()
+        except Exception as e:
+            print(f"Error exporting final analysis: {e}")
+            
     except Exception as e:
-        print(f"Error running analysis: {e}")
+        print(f"❌ Unexpected error: {e}")
     finally:
         client.close()
+        print("🔌 MongoDB connection closed")
