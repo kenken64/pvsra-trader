@@ -540,8 +540,7 @@ class BinanceFuturesScalpingBot:
             # Use a portion of available balance with leverage
             max_position_value = min(self.trade_amount, available_balance * 0.1) * self.leverage
             quantity = max_position_value / price
-            
-            # Apply symbol precision constraints
+              # Apply symbol precision constraints
             if self.symbol_info:
                 step_size = None
                 min_qty = None
@@ -553,40 +552,41 @@ class BinanceFuturesScalpingBot:
                         min_qty = float(filter_info['minQty'])
                         max_qty = float(filter_info['maxQty'])
                         break
-                    if step_size:
-                        # Calculate precision from step size
-                        if step_size >= 1:
-                            precision = 0
-                        else:
-                            precision = len(str(step_size).split('.')[-1].rstrip('0'))
-                        
-                        # Round quantity to step size
-                        quantity = round(quantity / step_size) * step_size
-                        
-                        # Round to appropriate decimal places
+                
+                if step_size:
+                    # Calculate precision from step size
+                    if step_size >= 1:
+                        precision = 0
+                    else:
+                        precision = len(str(step_size).split('.')[-1].rstrip('0'))
+                    
+                    # Round quantity to step size
+                    quantity = round(quantity / step_size) * step_size
+                    
+                    # Round to appropriate decimal places
+                    quantity = round(quantity, precision)
+                    
+                    # Ensure minimum quantity requirement
+                    if min_qty and quantity < min_qty:
+                        quantity = min_qty
+                    
+                    # Check minimum notional value (critical for SUIUSDT - requires 5.0 USDT minimum)
+                    notional_value = quantity * price
+                    min_notional = 5.0  # SUIUSDT minimum notional value
+                    if notional_value < min_notional:
+                        # Increase quantity to meet minimum notional
+                        required_quantity = min_notional / price
+                        quantity = round(required_quantity / step_size) * step_size
                         quantity = round(quantity, precision)
-                        
-                        # Ensure minimum quantity requirement
-                        if min_qty and quantity < min_qty:
-                            quantity = min_qty
-                        
-                        # Check minimum notional value (critical for SUIUSDT - requires 5.0 USDT minimum)
+                        quantity = max(quantity, min_qty) if min_qty else quantity
                         notional_value = quantity * price
-                        min_notional = 5.0  # SUIUSDT minimum notional value
-                        if notional_value < min_notional:
-                            # Increase quantity to meet minimum notional
-                            required_quantity = min_notional / price
-                            quantity = round(required_quantity / step_size) * step_size
-                            quantity = round(quantity, precision)
-                            quantity = max(quantity, min_qty) if min_qty else quantity
-                            notional_value = quantity * price
-                        
-                        # Ensure maximum quantity requirement
-                        if max_qty and quantity > max_qty:
-                            quantity = max_qty
-                        
-                        logger.info(f"📊 Position size: {quantity} {self.symbol} (notional: {notional_value:.2f} USDT)")
-                        return quantity
+                    
+                    # Ensure maximum quantity requirement
+                    if max_qty and quantity > max_qty:
+                        quantity = max_qty
+                    
+                    logger.info(f"📊 Position size: {quantity} {self.symbol} (notional: {notional_value:.2f} USDT)")
+                    return quantity
             
             # Final fallback minimum
             return max(quantity, 0.001)
