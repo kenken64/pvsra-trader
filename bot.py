@@ -188,7 +188,7 @@ class BinanceFuturesScalpingBot:
             if response.status_code == 200:
                 balances = response.json()
                 for balance in balances:
-                    if balance['asset'] == 'USDT':
+                    if balance['asset'] == 'USDC':
                         return float(balance['availableBalance'])
                 return 0
             else:
@@ -242,11 +242,11 @@ class BinanceFuturesScalpingBot:
                 quantity = round(quantity / step_size) * step_size
             
             logger.info(f"📊 Position calculation:")
-            logger.info(f"   Trade Amount: {base_trade_amount:.2f} USDT")
-            logger.info(f"   Position Value: {position_value:.2f} USDT (with {self.leverage}x leverage)")
+            logger.info(f"   Trade Amount: {base_trade_amount:.2f} USDC")
+            logger.info(f"   Position Value: {position_value:.2f} USDC (with {self.leverage}x leverage)")
             logger.info(f"   Raw Quantity: {raw_quantity:.4f}")
             logger.info(f"   Final Quantity: {quantity:.1f} (step size: {step_size})")
-            logger.info(f"   Notional Value: {notional_value:.2f} USDT (min: {min_notional})")
+            logger.info(f"   Notional Value: {notional_value:.2f} USDC (min: {min_notional})")
             
             return quantity
             
@@ -280,11 +280,11 @@ class BinanceFuturesScalpingBot:
         
         # Check initial balance and log trading mode
         balance = self.get_account_balance()
-        logger.info(f"💰 Available USDT balance: {balance:.2f}")
+        logger.info(f"💰 Available USDC balance: {balance:.2f}")
         
         if self.use_percentage_trading:
             trade_amount = balance * (self.trade_amount_percentage / 100)
-            logger.info(f"📊 Current trade amount: {trade_amount:.2f} USDT ({self.trade_amount_percentage}% of balance)")
+            logger.info(f"📊 Current trade amount: {trade_amount:.2f} USDC ({self.trade_amount_percentage}% of balance)")
         else:
             if balance < self.trade_amount:
                 logger.warning(f"⚠️ Low balance! Available: {balance}, Required: {self.trade_amount}")
