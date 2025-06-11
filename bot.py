@@ -188,7 +188,7 @@ class BinanceFuturesScalpingBot:
             if response.status_code == 200:
                 balances = response.json()
                 for balance in balances:
-                    if balance['asset'] == 'USDC':
+                    if balance['asset'] == 'USDT':
                         return float(balance['availableBalance'])
                 return 0
             else:
@@ -198,6 +198,109 @@ class BinanceFuturesScalpingBot:
         except Exception as e:
             logger.error(f"Error getting balance: {e}")
             return 0
+
+    def get_all_futures_balances(self):
+        """Get all futures account balances"""
+        try:
+            timestamp = self.get_server_time()
+            query_string = f"timestamp={timestamp}"
+            signature = self.generate_signature(query_string)
+            
+            headers = {'X-MBX-APIKEY': self.api_key}
+            
+            response = requests.get(
+                f"{self.base_url}/fapi/v2/balance",
+                params={'timestamp': timestamp, 'signature': signature},
+                headers=headers,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"❌ Failed to get all balances: {response.text}")
+                return []
+                
+        except Exception as e:
+            logger.error(f"Error getting all balances: {e}")
+            return []
+
+    def display_futures_balances(self):
+        """Display all non-zero futures balances"""
+        try:
+            all_balances = self.get_all_futures_balances()
+            
+            if not all_balances:
+                logger.warning("No balance data available")
+                return
+            
+            # Filter non-zero balances
+            non_zero_balances = []
+            for balance in all_balances:
+                total_balance = float(balance['balance'])
+                if total_balance > 0:
+                    non_zero_balances.append(balance)
+            
+            if non_zero_balances:
+                logger.info("💰 All Non-Zero Futures Balances:")
+                for bal in non_zero_balances:
+                    asset = bal['asset']
+                    total_bal = float(bal['balance'])
+                    available_bal = float(bal['availableBalance'])
+                    logger.info(f"   {asset}: {total_bal:.6f} (Available: {available_bal:.6f})")
+            else:
+                logger.info("💰 No non-zero futures balances found")
+                
+        except Exception as e:
+            logger.error(f"Error displaying futures balances: {e}")
+
+    def get_futures_account_info(self):
+        """Get detailed futures account information"""
+        try:
+            timestamp = self.get_server_time()
+            query_string = f"timestamp={timestamp}"
+            signature = self.generate_signature(query_string)
+            
+            headers = {'X-MBX-APIKEY': self.api_key}
+            
+            response = requests.get(
+                f"{self.base_url}/fapi/v2/account",
+                params={'timestamp': timestamp, 'signature': signature},
+                headers=headers,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"❌ Failed to get account info: {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error getting account info: {e}")
+            return None
+
+    def display_account_summary(self):
+        """Display comprehensive account summary"""
+        try:
+            account_info = self.get_futures_account_info()
+            
+            if not account_info:
+                logger.warning("No account info available")
+                return
+            
+            logger.info("📊 Futures Account Summary:")
+            logger.info(f"   Total Wallet Balance: {float(account_info['totalWalletBalance']):.6f} USDT")
+            logger.info(f"   Total Unrealized Profit: {float(account_info['totalUnrealizedProfit']):.6f} USDT")
+            logger.info(f"   Total Margin Balance: {float(account_info['totalMarginBalance']):.6f} USDT")
+            logger.info(f"   Available Balance: {float(account_info['availableBalance']):.6f} USDT")
+            logger.info(f"   Max Withdraw Amount: {float(account_info['maxWithdrawAmount']):.6f} USDT")
+            
+            # Show individual balances
+            self.display_futures_balances()
+            
+        except Exception as e:
+            logger.error(f"Error displaying account summary: {e}")
 
     def calculate_position_size(self, price):
         """Calculate position size for futures trading with percentage support"""
@@ -242,11 +345,11 @@ class BinanceFuturesScalpingBot:
                 quantity = round(quantity / step_size) * step_size
             
             logger.info(f"📊 Position calculation:")
-            logger.info(f"   Trade Amount: {base_trade_amount:.2f} USDC")
-            logger.info(f"   Position Value: {position_value:.2f} USDC (with {self.leverage}x leverage)")
+            logger.info(f"   Trade Amount: {base_trade_amount:.2f} USDT")
+            logger.info(f"   Position Value: {position_value:.2f} USDT (with {self.leverage}x leverage)")
             logger.info(f"   Raw Quantity: {raw_quantity:.4f}")
             logger.info(f"   Final Quantity: {quantity:.1f} (step size: {step_size})")
-            logger.info(f"   Notional Value: {notional_value:.2f} USDC (min: {min_notional})")
+            logger.info(f"   Notional Value: {notional_value:.2f} USDT (min: {min_notional})")
             
             return quantity
             
@@ -259,8 +362,7 @@ class BinanceFuturesScalpingBot:
         if self.collection is None:
             return None
         
-        try:
-            # Add trading mode information
+        try:            # Add trading mode information
             if self.use_percentage_trading:
                 data["trading_mode"] = "percentage"
                 data["trading_mode_value"] = self.trade_amount_percentage
@@ -278,19 +380,22 @@ class BinanceFuturesScalpingBot:
         """Start the trading bot"""
         logger.info("🚀 Starting Futures Scalping Bot...")
         
+        # Display comprehensive account summary
+        self.display_account_summary()
+        
         # Check initial balance and log trading mode
         balance = self.get_account_balance()
-        logger.info(f"💰 Available USDC balance: {balance:.2f}")
+        logger.info(f"💰 Primary trading balance (USDT): {balance:.2f}")
         
         if self.use_percentage_trading:
             trade_amount = balance * (self.trade_amount_percentage / 100)
-            logger.info(f"📊 Current trade amount: {trade_amount:.2f} USDC ({self.trade_amount_percentage}% of balance)")
+            logger.info(f"📊 Current trade amount: {trade_amount:.2f} USDT ({self.trade_amount_percentage}% of balance)")
         else:
             if balance < self.trade_amount:
                 logger.warning(f"⚠️ Low balance! Available: {balance}, Required: {self.trade_amount}")
         
         self.running = True
-        logger.info("✅ Bot started successfully with percentage trading support!")
+        logger.info("✅ Bot started successfully with enhanced balance monitoring!")
 
 if __name__ == "__main__":
     try:
