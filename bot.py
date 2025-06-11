@@ -294,8 +294,7 @@ class BinanceFuturesScalpingBot:
         """Get Binance server time"""
         try:
             response = requests.get(f"{self.base_url}/fapi/v1/time", timeout=10)
-            return response.json()['serverTime']
-        except Exception as e:
+            return response.json()['serverTime']        except Exception as e:
             logger.error(f"Error getting server time: {e}")
             return int(time.time() * 1000)
     
@@ -306,6 +305,7 @@ class BinanceFuturesScalpingBot:
                 f"{self.base_url}/fapi/v1/ticker/price?symbol={self.symbol}", 
                 timeout=10
             )
+            
             if response.status_code == 200:
                 data = response.json()
                 return float(data['price'])
@@ -315,7 +315,7 @@ class BinanceFuturesScalpingBot:
         except Exception as e:
             logger.error(f"Error getting price: {e}")
             return None
-        
+    
     def get_symbol_info(self):
         """Get symbol information for precision and filters"""
         try:
@@ -505,8 +505,7 @@ class BinanceFuturesScalpingBot:
     
     def get_account_balance(self):
         """Get futures account balance"""
-        try:
-            timestamp = self.get_server_time()
+        try:            timestamp = self.get_server_time()
             query_string = f"timestamp={timestamp}"
             signature = self.generate_signature(query_string)
             
@@ -518,6 +517,7 @@ class BinanceFuturesScalpingBot:
                 headers=headers,
                 timeout=10
             )
+            
             if response.status_code == 200:
                 balances = response.json()
                 for balance in balances:
@@ -540,7 +540,8 @@ class BinanceFuturesScalpingBot:
             # Use a portion of available balance with leverage
             max_position_value = min(self.trade_amount, available_balance * 0.1) * self.leverage
             quantity = max_position_value / price
-              # Apply symbol precision constraints
+            
+            # Apply symbol precision constraints
             if self.symbol_info:
                 step_size = None
                 min_qty = None
@@ -570,23 +571,11 @@ class BinanceFuturesScalpingBot:
                     if min_qty and quantity < min_qty:
                         quantity = min_qty
                     
-                    # Check minimum notional value (critical for SUIUSDT - requires 5.0 USDT minimum)
-                    notional_value = quantity * price
-                    min_notional = 5.0  # SUIUSDT minimum notional value
-                    if notional_value < min_notional:
-                        # Increase quantity to meet minimum notional
-                        required_quantity = min_notional / price
-                        quantity = round(required_quantity / step_size) * step_size
-                        quantity = round(quantity, precision)
-                        quantity = max(quantity, min_qty) if min_qty else quantity
-                        notional_value = quantity * price
-                    
                     # Ensure maximum quantity requirement
                     if max_qty and quantity > max_qty:
                         quantity = max_qty
                     
-                    logger.info(f"📊 Position size: {quantity} {self.symbol} (notional: {notional_value:.2f} USDT)")
-                    return quantity
+                    logger.debug(f"Position size calculation: {quantity} (step: {step_size}, min: {min_qty}, precision: {precision})")
             
             # Final fallback minimum
             return max(quantity, 0.001)

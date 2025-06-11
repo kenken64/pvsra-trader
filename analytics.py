@@ -4,6 +4,9 @@ from pymongo import MongoClient
 from datetime import datetime, timezone, timedelta
 import matplotlib.pyplot as plt
 import seaborn as sns
+import time
+import signal
+import sys
 
 try:
     from dotenv import load_dotenv
@@ -310,7 +313,7 @@ class TradingAnalytics:
             print("📊 Chart saved as 'trading_activity.png'")
             
         except ImportError:
-            print("⚠️ matplotlib not installed. Install with: pip install matplotlib")
+                        print("⚠️ matplotlib not installed. Install with: pip install matplotlib")
         except Exception as e:
             print(f"Error creating plots: {e}")
     
@@ -318,32 +321,67 @@ class TradingAnalytics:
         """Close MongoDB connection"""
         self.client.close()
 
+def clear_screen():
+    """Clear the terminal screen"""
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def signal_handler(sig, frame):
+    """Handle Ctrl+C gracefully"""
+    print("\n\n🛑 Analytics monitoring stopped by user")
+    print("📊 Final export...")
+    try:
+        analytics = TradingAnalytics()
+        analytics.export_to_csv(f"final_orders_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+        analytics.export_trade_closures_to_csv(f"final_trades_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+        analytics.close()
+        print("✅ Final data exported successfully")
+    except Exception as e:
+        print(f"❌ Error during final export: {e}")
+    sys.exit(0)
+
 # Example usage
 if __name__ == "__main__":
+    # Set up signal handler for graceful exit
+    signal.signal(signal.SIGINT, signal_handler)
+    
     analytics = TradingAnalytics()
     
+    print("🚀 Starting Analytics Monitor with 10-second refresh...")
+    print("📊 Live Trading Analytics Dashboard")
+    print("💡 Press Ctrl+C to stop and export final data")
+    print("=" * 60)
+    
     try:
-        # Generate comprehensive report
-        data = analytics.generate_report()
-        
-        print("\n" + "="*50)
-        print("Additional Options:")
-        print("1. Export orders to CSV: analytics.export_to_csv('my_orders.csv')")
-        print("2. Export trade closures to CSV: analytics.export_trade_closures_to_csv('my_trades.csv')")
-        print("3. Create plots: analytics.plot_trading_activity()")
-        print("4. Exit analysis: analytics.analyze_exit_performance()")
-        print("5. Access raw data: data['orders'], data['positions'], data['closures']")
-        
-        # Optionally export detailed trade closures
-        # analytics.export_trade_closures_to_csv("detailed_trades.csv")
-        
-        # Optionally export basic orders
-        # analytics.export_to_csv("trading_orders.csv")
-        
-        # Optionally create plots
-        # analytics.plot_trading_activity()
-        
+        while True:
+            clear_screen()
+            
+            print("🚀 LIVE TRADING ANALYTICS MONITOR")
+            print("=" * 60)
+            print(f"🕐 Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print("💡 Press Ctrl+C to stop and export final data")
+            print("=" * 60)
+            
+            # Generate comprehensive report
+            data = analytics.generate_report()
+            
+            print("\n" + "="*60)
+            print("📋 QUICK ACTIONS:")
+            print("1. Export orders to CSV: analytics.export_to_csv('my_orders.csv')")
+            print("2. Export trade closures to CSV: analytics.export_trade_closures_to_csv('my_trades.csv')")
+            print("3. Create plots: analytics.plot_trading_activity()")
+            print("4. Exit analysis: analytics.analyze_exit_performance()")
+            print("5. Access raw data: data['orders'], data['positions'], data['closures']")
+            print("=" * 60)
+            print(f"🔄 Refreshing in 10 seconds...")
+            
+            # Wait 10 seconds before next update
+            time.sleep(10)
+            
+    except KeyboardInterrupt:
+        signal_handler(signal.SIGINT, None)
     except Exception as e:
-        print(f"Error running analytics: {e}")
+        print(f"❌ Error running analytics: {e}")
+        print("🔄 Retrying in 10 seconds...")
+        time.sleep(10)
     finally:
         analytics.close()
