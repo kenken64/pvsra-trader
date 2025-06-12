@@ -732,12 +732,126 @@ if __name__ == "__main__":
     try:
         bot = EnhancedBinanceFuturesBot()
         bot.start()
-        
-        # Simple demonstration loop
+          # Main trading loop
         try:
+            logger.info("🔄 Starting main trading loop...")
+            
             while True:
-                time.sleep(30)
-                logger.info("🔄 Bot running with PVSRA integration...")
+                try:
+                    # Get current price
+                    current_price = bot.get_current_price()
+                    if current_price is None:
+                        logger.warning("⚠️ Failed to get current price, retrying...")
+                        time.sleep(5)
+                        continue
+                    
+                    bot.current_price = current_price
+                    bot.price_history.append(current_price)
+                    
+                    # Check for existing positions
+                    existing_position = bot.check_existing_position(bot.symbol)
+                    
+                    if existing_position:
+                        # Monitor existing position
+                        pnl_color = "🟢" if existing_position['unrealized_pnl'] >= 0 else "🔴"
+                        logger.info(f"📊 Position: {existing_position['side']} {existing_position['size']} @ ${existing_position['entry_price']:.4f} | PnL: {pnl_color} ${existing_position['unrealized_pnl']:.2f}")
+                        
+                        # Check for exit conditions (simplified - you can enhance this)
+                        pnl_percentage = existing_position['percentage']
+                        if pnl_percentage >= bot.profit_threshold * 100:
+                            logger.info(f"🎯 Profit target reached: {pnl_percentage:.2f}%")
+                        elif pnl_percentage <= -bot.stop_loss_threshold * 100:
+                            logger.info(f"🛑 Stop loss triggered: {pnl_percentage:.2f}%")
+                    else:
+                        # Look for trading opportunities
+                        if len(bot.price_history) >= 5:
+                            # Simple price momentum analysis
+                            recent_prices = list(bot.price_history)[-5:]
+                            price_change = (recent_prices[-1] - recent_prices[0]) / recent_prices[0]
+                            
+                            # Determine potential action
+                            potential_action = None
+                            if price_change > bot.min_price_change:
+                                potential_action = "BUY"
+                            elif price_change < -bot.min_price_change:
+                                potential_action = "SELL"
+                              if potential_action:
+                                # Evaluate trade with PVSRA integration
+                                trade_decision = bot.should_enter_trade(potential_action)
+                                
+                                if trade_decision['should_trade']:
+                                    # ASCII Art for BUY/SELL signals
+                                    if potential_action == "BUY":
+                                        print("\n" + "="*60)
+                                        print("██████╗ ██╗   ██╗██╗   ██╗")
+                                        print("██╔══██╗██║   ██║╚██╗ ██╔╝")
+                                        print("██████╔╝██║   ██║ ╚████╔╝ ")
+                                        print("██╔══██╗██║   ██║  ╚██╔╝  ")
+                                        print("██████╔╝╚██████╔╝   ██║   ")
+                                        print("╚═════╝  ╚═════╝    ╚═╝   ")
+                                        print("🟢 LONG SIGNAL DETECTED 🟢")
+                                        print("="*60 + "\n")
+                                    else:  # SELL
+                                        print("\n" + "="*60)
+                                        print("███████╗███████╗██╗     ██╗     ")
+                                        print("██╔════╝██╔════╝██║     ██║     ")
+                                        print("███████╗█████╗  ██║     ██║     ")
+                                        print("╚════██║██╔══╝  ██║     ██║     ")
+                                        print("███████║███████╗███████╗███████╗")
+                                        print("╚══════╝╚══════╝╚══════╝╚══════╝")
+                                        print("🔴 SHORT SIGNAL DETECTED 🔴")
+                                        print("="*60 + "\n")
+                                    
+                                    logger.info(f"🚀 Trade Signal: {potential_action}")
+                                    logger.info(f"   Confidence: {trade_decision['confidence']:.2f}")
+                                    logger.info(f"   Reason: {trade_decision['reason']}")
+                                    logger.info(f"   Price Change: {price_change*100:.3f}%")
+                                    
+                                    if 'pvsra_info' in trade_decision:
+                                        logger.info(f"   PVSRA Signal: {trade_decision['pvsra_info']}")
+                                    
+                                    # Calculate position size
+                                    position_size = bot.calculate_position_size(current_price)
+                                    if position_size > 0:
+                                        logger.info(f"💰 Would execute: {potential_action} {position_size} {bot.symbol} @ ${current_price:.4f}")
+                                        logger.info("📝 Note: This is a simulation - no actual trades executed")
+                                        
+                                        # Log the trade decision to MongoDB
+                                        bot._log_to_mongodb({
+                                            'type': 'trade_signal',
+                                            'action': potential_action,
+                                            'price': current_price,
+                                            'quantity': position_size,
+                                            'confidence': trade_decision['confidence'],
+                                            'reason': trade_decision['reason'],
+                                            'price_change_pct': price_change * 100,
+                                            'pvsra_info': trade_decision.get('pvsra_info', 'None'),
+                                            'timestamp': datetime.now(timezone.utc),
+                                            'session_id': bot.bot_session_id,
+                                            'symbol': bot.symbol,
+                                            'simulation': True
+                                        })
+                                        
+                                        # Update last trade time to respect cooldown
+                                        bot.last_trade_time = time.time()
+                                    else:
+                                        logger.warning("⚠️ Failed to calculate position size")
+                                else:
+                                    logger.debug(f"❌ Trade rejected: {trade_decision['reason']}")
+                    
+                    # Display PVSRA signal status
+                    if bot.use_pvsra and bot.last_pvsra_signal:
+                        signal_age = time.time() - bot.pvsra_signal_time
+                        if signal_age < 300:  # Recent signal (less than 5 minutes)
+                            logger.info(f"🎯 Recent PVSRA: {bot.last_pvsra_signal.get('alert', 'Unknown')} ({signal_age:.0f}s ago)")
+                    
+                    # Sleep before next iteration
+                    time.sleep(bot.price_update_interval)
+                    
+                except Exception as e:
+                    logger.error(f"Error in trading loop: {e}")
+                    time.sleep(5)
+                    
         except KeyboardInterrupt:
             logger.info("👋 Stopping bot...")
             bot.stop()
