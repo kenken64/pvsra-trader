@@ -98,10 +98,10 @@ class EnhancedBinanceFuturesBot:
         self.use_pvsra = os.getenv('USE_PVSRA', 'True').lower() == 'true' and PVSRA_AVAILABLE
         self.pvsra_weight = float(os.getenv('PVSRA_WEIGHT', '0.7'))  # How much to weight PVSRA vs traditional signals
         self.require_pvsra_confirmation = os.getenv('REQUIRE_PVSRA_CONFIRMATION', 'False').lower() == 'true'
-          # Bot settings
+        
+        # Bot settings
         self.price_update_interval = int(os.getenv('PRICE_UPDATE_INTERVAL', '2'))
         self.trade_cooldown = int(os.getenv('TRADE_COOLDOWN', '30'))
-        self.allow_multiple_positions = os.getenv('ALLOW_MULTIPLE_POSITIONS', 'False').lower() == 'true'
         
         # Bot state
         self.current_price = 0
@@ -186,7 +186,8 @@ class EnhancedBinanceFuturesBot:
         logger.info(f"   Leverage: {self.leverage}x")
         logger.info(f"   Profit Threshold: {self.profit_threshold*100:.2f}%")
         logger.info(f"   Stop Loss Threshold: {self.stop_loss_threshold*100:.2f}%")
-          # PVSRA configuration
+        
+        # PVSRA configuration
         if self.use_pvsra:
             logger.info(f"   🎯 PVSRA Integration: Enabled (Weight: {self.pvsra_weight:.1f})")
             logger.info(f"   🎯 PVSRA Confirmation Required: {self.require_pvsra_confirmation}")
@@ -195,7 +196,6 @@ class EnhancedBinanceFuturesBot:
         
         logger.info(f"   Price Update Interval: {self.price_update_interval}s")
         logger.info(f"   Trade Cooldown: {self.trade_cooldown}s")
-        logger.info(f"   🔒 Multiple Positions: {'ALLOWED' if self.allow_multiple_positions else 'BLOCKED'}")
         logger.info(f"   Base URL: {self.base_url}")
 
     def generate_signature(self, query_string):
@@ -428,7 +428,7 @@ class EnhancedBinanceFuturesBot:
                 }
         else:
             # No clear PVSRA signal
-                        return {
+            return {
                 'should_trade': not self.require_pvsra_confirmation,
                 'confidence': 0.4,
                 'reason': 'No clear PVSRA signal',
@@ -437,7 +437,7 @@ class EnhancedBinanceFuturesBot:
 
     def should_enter_trade(self, action: str) -> Dict:
         """
-        Enhanced trade entry evaluation with PVSRA integration and position checking
+        Enhanced trade entry evaluation with PVSRA integration
         
         Args:
             action: 'BUY' or 'SELL'
@@ -445,17 +445,6 @@ class EnhancedBinanceFuturesBot:
         Returns:
             Dict with trade decision
         """
-        # CRITICAL: Check for existing positions first (SAFETY CHECK)
-        if not self.allow_multiple_positions:
-            existing_position = self.check_existing_position(self.symbol)
-            if existing_position:
-                return {
-                    'should_trade': False,
-                    'reason': f"Position exists: {existing_position['side']} {existing_position['size']} @ ${existing_position['entry_price']:.4f} (PnL: ${existing_position['unrealized_pnl']:.2f})",
-                    'confidence': 0.0,
-                    'existing_position': existing_position
-                }
-        
         # Traditional scalping checks
         if self.position_size != 0:
             return {
@@ -604,98 +593,12 @@ class EnhancedBinanceFuturesBot:
             except Exception as e:
                 logger.error(f"Error starting PVSRA monitoring: {e}")
 
-    def get_open_positions(self):
-        """Get all open futures positions"""
-        try:
-            timestamp = self.get_server_time()
-            query_string = f"timestamp={timestamp}"
-            signature = self.generate_signature(query_string)
-            
-            headers = {'X-MBX-APIKEY': self.api_key}
-            
-            response = requests.get(
-                f"{self.base_url}/fapi/v2/positionRisk",
-                params={'timestamp': timestamp, 'signature': signature},
-                headers=headers,
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                positions = response.json()
-                # Filter to only open positions (non-zero position amount)
-                open_positions = []
-                for pos in positions:
-                    position_amt = float(pos['positionAmt'])
-                    if position_amt != 0:
-                        open_positions.append({
-                            'symbol': pos['symbol'],
-                            'side': 'LONG' if position_amt > 0 else 'SHORT',
-                            'size': abs(position_amt),
-                            'entry_price': float(pos['entryPrice']),
-                            'mark_price': float(pos['markPrice']),
-                            'unrealized_pnl': float(pos['unRealizedProfit']),
-                            'percentage': float(pos['percentage'])
-                        })
-                
-                return open_positions            
-            else:
-                logger.error(f"❌ Failed to get positions: {response.text}")
-                return []
-                
-        except Exception as e:
-            logger.error(f"Error getting open positions: {e}")
-            return []
-    
-    def check_existing_position(self, symbol: str) -> Dict:
-        """
-        Check if there's already an open position for the given symbol
-        
-        Returns:
-        - Dictionary with position information or None if no position
-        """
-        try:
-            open_positions = self.get_open_positions()
-            
-            for position in open_positions:
-                if position['symbol'] == symbol:
-                    return position
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error checking existing position: {e}")
-            return None
-    
-    def display_open_positions(self):
-        """Display all open positions"""
-        try:
-            open_positions = self.get_open_positions()
-            
-            if open_positions:
-                logger.info("📈 Open Futures Positions:")
-                for pos in open_positions:
-                    pnl_color = "🟢" if pos['unrealized_pnl'] >= 0 else "🔴"
-                    logger.info(f"   {pos['symbol']} {pos['side']}:")
-                    logger.info(f"      Size: {pos['size']}")
-                    logger.info(f"      Entry: ${pos['entry_price']:.4f}")
-                    logger.info(f"      Mark: ${pos['mark_price']:.4f}")
-                    logger.info(f"      PnL: {pnl_color} ${pos['unrealized_pnl']:.2f} ({pos['percentage']:.2f}%)")
-            else:
-                logger.info("📈 No open positions")
-                
-        except Exception as e:
-            logger.error(f"Error displaying open positions: {e}")
-    
     def start(self):
         """Start the enhanced trading bot"""
         logger.info("🚀 Starting Enhanced Futures Bot with PVSRA Integration...")
         
         # Display account summary
         self.display_futures_balances()
-        
-        # Display current open positions (SAFETY CHECK)
-        logger.info("\n🔍 Checking for existing positions...")
-        self.display_open_positions()
         
         # Check initial balance
         balance = self.get_account_balance()
