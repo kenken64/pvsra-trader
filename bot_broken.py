@@ -597,6 +597,92 @@ class EnhancedBinanceFuturesBot:
             logger.error(f"Error calculating position size: {e}")
             return 0
 
+    def should_enter_trade(self, action: str) -> Dict:
+        """
+        Enhanced trade entry evaluation with position checking and better debugging
+        
+        Args:
+            action: 'BUY' or 'SELL'
+            
+        Returns:
+            Dict with trade decision
+        """
+        # CRITICAL: Check for existing positions first (SAFETY CHECK)
+        if not self.allow_multiple_positions:
+            existing_position = self.check_existing_position(self.symbol)
+            if existing_position:
+                return {
+                    'should_trade': False,
+                    'reason': f"Position exists: {existing_position['side']} {existing_position['size']} @ ${existing_position['entry_price']:.4f} (PnL: ${existing_position['unrealized_pnl']:.2f})",
+                    'confidence': 0.0,
+                    'existing_position': existing_position
+                }
+        
+        if len(self.price_history) < 5:
+            return {
+                'should_trade': False,
+                'reason': 'Insufficient price history',
+                'confidence': 0.0
+            }
+        
+        # Simple price momentum check
+        recent_prices = list(self.price_history)[-5:]
+        price_change = (recent_prices[-1] - recent_prices[0]) / recent_prices[0]
+        
+        # Check if price change is significant enough
+        if abs(price_change) < self.min_price_change:
+            return {
+                'should_trade': False,
+                'reason': f'Price change too small: {price_change*100:.3f}% (min: {self.min_price_change*100:.3f}%)',
+                'confidence': 0.0
+            }
+        
+        # Check cooldown AFTER we know there's a valid signal
+        time_since_last_trade = time.time() - self.last_trade_time
+        if time_since_last_trade < self.trade_cooldown:
+            return {
+                'should_trade': False,
+                'reason': f'Trade cooldown active: {time_since_last_trade:.1f}s / {self.trade_cooldown}s',
+                'confidence': 0.0
+            }
+          # Traditional signal confidence  
+        traditional_confidence = 0.5
+        if action == 'BUY' and price_change > self.min_price_change:
+            traditional_confidence = 0.7
+        elif action == 'SELL' and price_change < -self.min_price_change:
+            traditional_confidence = 0.7
+        
+        # PVSRA evaluation
+        pvsra_eval = self.evaluate_pvsra_signal(action)
+        
+        # Final decision
+        if not pvsra_eval['should_trade']:
+            return pvsra_eval
+        
+        # Combine confidences
+        final_confidence = (pvsra_eval['confidence'] * self.pvsra_weight + 
+                          traditional_confidence * (1 - self.pvsra_weight))
+        
+        # Send Telegram signal alert if we're going to trade
+        if self.telegram_bot.enabled and final_confidence >= 0.6:
+            self.telegram_bot.send_signal_alert(
+                signal_type=action,
+                symbol=self.symbol,
+                price=self.current_price,
+                confidence=final_confidence,
+                reason=pvsra_eval.get('reason', f"Price momentum signal: {price_change*100:.3f}%"),
+                pvsra_signal=pvsra_eval.get('pvsra_signal')
+            )
+        
+        return {
+            'should_trade': True,
+            'confidence': final_confidence,
+            'reason': f"Combined signal: Traditional({traditional_confidence:.2f}) + PVSRA({pvsra_eval['confidence']:.2f})",
+            'final_action': pvsra_eval['final_action'],
+            'pvsra_info': pvsra_eval.get('pvsra_signal', 'None'),
+            'price_change': price_change
+        }
+
     def evaluate_pvsra_signal(self, intended_action: str) -> Dict:
         """
         Evaluate PVSRA signal for trading decision
@@ -680,92 +766,6 @@ class EnhancedBinanceFuturesBot:
                 'final_action': intended_action
             }
 
-    def should_enter_trade(self, action: str) -> Dict:
-        """
-        Enhanced trade entry evaluation with position checking and better debugging
-        
-        Args:
-            action: 'BUY' or 'SELL'
-            
-        Returns:
-            Dict with trade decision
-        """
-        # CRITICAL: Check for existing positions first (SAFETY CHECK)
-        if not self.allow_multiple_positions:
-            existing_position = self.check_existing_position(self.symbol)
-            if existing_position:
-                return {
-                    'should_trade': False,
-                    'reason': f"Position exists: {existing_position['side']} {existing_position['size']} @ ${existing_position['entry_price']:.4f} (PnL: ${existing_position['unrealized_pnl']:.2f})",
-                    'confidence': 0.0,
-                    'existing_position': existing_position
-                }
-        
-        if len(self.price_history) < 5:
-            return {
-                'should_trade': False,
-                'reason': 'Insufficient price history',
-                'confidence': 0.0
-            }
-        
-        # Simple price momentum check
-        recent_prices = list(self.price_history)[-5:]
-        price_change = (recent_prices[-1] - recent_prices[0]) / recent_prices[0]
-        
-        # Check if price change is significant enough
-        if abs(price_change) < self.min_price_change:
-            return {
-                'should_trade': False,
-                'reason': f'Price change too small: {price_change*100:.3f}% (min: {self.min_price_change*100:.3f}%)',
-                'confidence': 0.0
-            }
-          # Check cooldown AFTER we know there's a valid signal
-        time_since_last_trade = time.time() - self.last_trade_time
-        if time_since_last_trade < self.trade_cooldown:
-            return {
-                'should_trade': False,
-                'reason': f'Trade cooldown active: {time_since_last_trade:.1f}s / {self.trade_cooldown}s',
-                'confidence': 0.0
-            }
-        
-        # Traditional signal confidence
-        traditional_confidence = 0.5
-        if action == 'BUY' and price_change > self.min_price_change:
-            traditional_confidence = 0.7
-        elif action == 'SELL' and price_change < -self.min_price_change:
-            traditional_confidence = 0.7
-        
-        # PVSRA evaluation
-        pvsra_eval = self.evaluate_pvsra_signal(action)
-        
-        # Final decision
-        if not pvsra_eval['should_trade']:
-            return pvsra_eval
-        
-        # Combine confidences
-        final_confidence = (pvsra_eval['confidence'] * self.pvsra_weight + 
-                          traditional_confidence * (1 - self.pvsra_weight))
-        
-        # Send Telegram signal alert if we're going to trade
-        if self.telegram_bot.enabled and final_confidence >= 0.6:
-            self.telegram_bot.send_signal_alert(
-                signal_type=action,
-                symbol=self.symbol,
-                price=self.current_price,
-                confidence=final_confidence,
-                reason=pvsra_eval.get('reason', f"Price momentum signal: {price_change*100:.3f}%"),
-                pvsra_signal=pvsra_eval.get('pvsra_signal')
-            )
-        
-        return {
-            'should_trade': True,
-            'confidence': final_confidence,
-            'reason': f"Combined signal: Traditional({traditional_confidence:.2f}) + PVSRA({pvsra_eval['confidence']:.2f})",
-            'final_action': pvsra_eval['final_action'],
-            'pvsra_info': pvsra_eval.get('pvsra_signal', 'None'),
-            'price_change': price_change
-        }
-
     def on_pvsra_signal(self, symbol: str, alert: Dict):
         """Handle PVSRA signal callbacks"""
         if symbol != self.symbol:
@@ -824,7 +824,7 @@ class EnhancedBinanceFuturesBot:
             self.start_pvsra_monitoring()
         
         logger.info("✅ Enhanced bot started successfully!")
-    
+
     def start_pvsra_monitoring(self):
         """Start PVSRA real-time monitoring"""
         if self.use_pvsra and self.pvsra:
@@ -835,8 +835,6 @@ class EnhancedBinanceFuturesBot:
                     logger.info(f"🎯 Started PVSRA monitoring for {self.symbol} on {interval}")
             except Exception as e:
                 logger.error(f"Error starting PVSRA monitoring: {e}")
-                if self.telegram_bot.enabled:
-                    self.telegram_bot.send_message(f"⚠️ *PVSRA Monitoring Error*\n\n{str(e)}")
 
 if __name__ == "__main__":
     try:
@@ -909,61 +907,29 @@ if __name__ == "__main__":
                                 if position_size > 0:
                                     if bot.enable_live_trading:
                                         # Execute live market order
-                                        logger.info(f"🔥 EXECUTING LIVE TRADE: {potential_action} {position_size} {bot.symbol} @ ${current_price:.4f}")
-                                        order_result = bot.place_market_order(potential_action, position_size)
+                                        logger.info(f"🔥 EXECUTING LIVE TRADE: {potential_action} {position_size} {bot.symbol} @ ${current_price:.4f}")                                        order_result = bot.place_market_order(potential_action, position_size)
                                         
                                         if order_result['success']:
                                             logger.info(f"✅ {order_result['message']}")
-                                            # Send Telegram notification for successful live trade
-                                            if bot.telegram_bot.enabled:
-                                                bot.telegram_bot.send_trade_execution(
-                                                    action=potential_action,
-                                                    symbol=bot.symbol,
-                                                    quantity=position_size,
-                                                    price=current_price,
-                                                    mode="LIVE"
-                                                )
                                         else:
                                             logger.error(f"❌ {order_result['message']}")
-                                            # Send Telegram notification for failed trade
-                                            if bot.telegram_bot.enabled:
-                                                bot.telegram_bot.send_message(
-                                                    f"❌ *TRADE FAILED*\n\n"
-                                                    f"📊 *Symbol:* `{bot.symbol}`\n"
-                                                    f"🎯 *Action:* {potential_action}\n"
-                                                    f"💰 *Price:* `${current_price:.4f}`\n"
-                                                    f"❌ *Error:* {order_result.get('error', 'Unknown error')}\n"
-                                                    f"⏰ *Time:* `{datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}`"
-                                                )
                                     else:
                                         # Simulation mode
                                         logger.info(f"💰 Would execute: {potential_action} {position_size} {bot.symbol} @ ${current_price:.4f}")
                                         logger.info("📝 Note: This is a simulation - no actual trades executed")
                                         # Send Telegram notification for simulation trade
-                                        if bot.telegram_bot.enabled:
-                                            bot.telegram_bot.send_trade_execution(
-                                                action=potential_action,
-                                                symbol=bot.symbol,
-                                                quantity=position_size,
-                                                price=current_price,
-                                                mode="SIMULATION"
-                                            )
+                                        bot.telegram_bot.send_trade_execution(
+                                            action=potential_action,
+                                            symbol=bot.symbol,
+                                            quantity=position_size,
+                                            price=current_price,
+                                            mode="SIMULATION"
+                                        )
                                     
                                     # Update last trade time to respect cooldown
                                     bot.last_trade_time = time.time()
                                 else:
                                     logger.warning("⚠️ Failed to calculate position size")
-                                    # Send Telegram notification for position size calculation failure
-                                    if bot.telegram_bot.enabled:
-                                        bot.telegram_bot.send_message(
-                                            f"⚠️ *POSITION SIZE CALCULATION FAILED*\n\n"
-                                            f"📊 *Symbol:* `{bot.symbol}`\n"
-                                            f"🎯 *Action:* {potential_action}\n"
-                                            f"💰 *Price:* `${current_price:.4f}`\n"
-                                            f"🔍 *Confidence:* `{trade_decision['confidence']:.1%}`\n"
-                                            f"❌ *Issue:* Failed to calculate appropriate position size\n"
-                                            f"⏰ *Time:* `{datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}`"
-                                        )
                             else:
                                 # More detailed logging for rejected trades
                                 if 'cooldown' in trade_decision['reason'].lower():
