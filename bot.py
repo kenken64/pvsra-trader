@@ -775,7 +775,7 @@ if __name__ == "__main__":
                                 potential_action = "BUY"
                             elif price_change < -bot.min_price_change:
                                 potential_action = "SELL"
-                              if potential_action:
+                            if potential_action:
                                 # Evaluate trade with PVSRA integration
                                 trade_decision = bot.should_enter_trade(potential_action)
                                 
