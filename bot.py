@@ -176,8 +176,7 @@ class EnhancedBinanceFuturesBot:
         logger.info("🤖 Enhanced Bot Configuration:")
         logger.info(f"   Symbol: {self.symbol}")
         logger.info(f"   Test Mode: {self.test_mode}")
-        
-        # Trading mode
+          # Trading mode
         if self.use_percentage_trading:
             logger.info(f"   Trading Mode: Percentage-based ({self.trade_amount_percentage}% of available balance)")
         else:
@@ -186,7 +185,8 @@ class EnhancedBinanceFuturesBot:
         logger.info(f"   Leverage: {self.leverage}x")
         logger.info(f"   Profit Threshold: {self.profit_threshold*100:.2f}%")
         logger.info(f"   Stop Loss Threshold: {self.stop_loss_threshold*100:.2f}%")
-          # PVSRA configuration
+        
+        # PVSRA configuration
         if self.use_pvsra:
             logger.info(f"   🎯 PVSRA Integration: Enabled (Weight: {self.pvsra_weight:.1f})")
             logger.info(f"   🎯 PVSRA Confirmation Required: {self.require_pvsra_confirmation}")
@@ -198,7 +198,7 @@ class EnhancedBinanceFuturesBot:
         logger.info(f"   🔒 Multiple Positions: {'ALLOWED' if self.allow_multiple_positions else 'BLOCKED'}")
         logger.info(f"   Base URL: {self.base_url}")
 
-   
+    def generate_signature(self, query_string):
         """Generate HMAC SHA256 signature for API requests"""
         return hmac.new(
             self.api_secret.encode('utf-8'),
