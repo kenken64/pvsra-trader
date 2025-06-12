@@ -198,7 +198,7 @@ class EnhancedBinanceFuturesBot:
         logger.info(f"   🔒 Multiple Positions: {'ALLOWED' if self.allow_multiple_positions else 'BLOCKED'}")
         logger.info(f"   Base URL: {self.base_url}")
 
-    def generate_signature(self, query_string):
+   
         """Generate HMAC SHA256 signature for API requests"""
         return hmac.new(
             self.api_secret.encode('utf-8'),
@@ -238,7 +238,7 @@ class EnhancedBinanceFuturesBot:
             return None
 
     def get_account_balance(self):
-        """Get futures account balance"""
+        """Get futures account balance (supports both USDT and USDC)"""
         try:
             timestamp = self.get_server_time()
             query_string = f"timestamp={timestamp}"
@@ -255,9 +255,24 @@ class EnhancedBinanceFuturesBot:
             
             if response.status_code == 200:
                 balances = response.json()
+                
+                # First try USDT
                 for balance in balances:
                     if balance['asset'] == 'USDT':
-                        return float(balance['availableBalance'])
+                        usdt_balance = float(balance['availableBalance'])
+                        if usdt_balance > 0:
+                            logger.info(f"💰 Using USDT balance: {usdt_balance:.2f}")
+                            return usdt_balance
+                
+                # If no USDT, try USDC
+                for balance in balances:
+                    if balance['asset'] == 'USDC':
+                        usdc_balance = float(balance['availableBalance'])
+                        if usdc_balance > 0:
+                            logger.info(f"💰 Using USDC balance: {usdc_balance:.2f}")
+                            return usdc_balance
+                
+                logger.warning("⚠️ No USDT or USDC balance found")
                 return 0
             else:
                 logger.error(f"❌ Failed to get balance: {response.text}")
