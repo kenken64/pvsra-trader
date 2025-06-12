@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Enhanced Binance Futures Scalping Bot with Market Orders
-Fixed version with proper position checking and cooldown handling
+Enhanced Binance Futures Scalping Bot with PVSRA Integration and Market Orders
+Combines scalping strategies with PVSRA signals and supports both simulation and live trading.
 """
 
 import os
@@ -24,6 +24,17 @@ try:
     print("✅ Loaded environment variables from .env file")
 except ImportError:
     print("⚠️ python-dotenv not installed. Using system environment variables.")
+    print("Install with: pip install python-dotenv")
+
+# Import PVSRA modules
+try:
+    from binance_futures_pvsra import BinanceFuturesPVSRA
+    PVSRA_AVAILABLE = True
+    print("✅ PVSRA modules imported successfully")
+except ImportError as e:
+    PVSRA_AVAILABLE = False
+    print(f"⚠️ PVSRA modules not available: {e}")
+    print("PVSRA features will be disabled")
 
 # Configure logging
 log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -33,8 +44,8 @@ logger = logging.getLogger(__name__)
 
 class EnhancedBinanceFuturesBot:
     """
-    Enhanced Binance Futures Bot with Market Orders
-    Fixed version with proper error handling and position checking
+    Enhanced Binance Futures Bot with PVSRA Integration and Market Orders
+    Combines traditional scalping with advanced technical analysis signals
     """
     
     def __init__(self):
@@ -85,9 +96,14 @@ class EnhancedBinanceFuturesBot:
         self.stop_loss_threshold = float(os.getenv('STOP_LOSS_THRESHOLD', '0.001'))
         self.min_price_change = float(os.getenv('MIN_PRICE_CHANGE', '0.0003'))
         
+        # PVSRA Configuration
+        self.use_pvsra = os.getenv('USE_PVSRA', 'True').lower() == 'true' and PVSRA_AVAILABLE
+        self.pvsra_weight = float(os.getenv('PVSRA_WEIGHT', '0.7'))
+        self.require_pvsra_confirmation = os.getenv('REQUIRE_PVSRA_CONFIRMATION', 'False').lower() == 'true'
+        
         # Bot settings
         self.price_update_interval = int(os.getenv('PRICE_UPDATE_INTERVAL', '2'))
-        self.trade_cooldown = int(os.getenv('TRADE_COOLDOWN', '5'))  # 5 seconds
+        self.trade_cooldown = int(os.getenv('TRADE_COOLDOWN', '5'))  # Reduced from 30 to 5 seconds
         self.allow_multiple_positions = os.getenv('ALLOW_MULTIPLE_POSITIONS', 'False').lower() == 'true'
         
         # Bot state
@@ -98,14 +114,23 @@ class EnhancedBinanceFuturesBot:
         self.last_trade_time = 0
         self.bot_session_id = f"bot_{int(time.time())}"
         
+        # PVSRA state
+        self.last_pvsra_signal = None
+        self.pvsra_signal_time = 0
+        self.pvsra_signals_history = deque(maxlen=20)
+        
         # URLs
         self.base_url = "https://testnet.binancefuture.com" if self.test_mode else "https://fapi.binance.com"
         
         # Initialize
         self.running = False
+        self.symbol_info = None
         
         # Setup MongoDB connection
         self._setup_mongodb()
+        
+        # Initialize PVSRA if available
+        self._setup_pvsra()
         
         # Log configuration
         self._log_configuration()
@@ -129,6 +154,26 @@ class EnhancedBinanceFuturesBot:
             self.db = None
             self.collection = None
 
+    def _setup_pvsra(self):
+        """Initialize PVSRA if available"""
+        if self.use_pvsra and PVSRA_AVAILABLE:
+            try:
+                self.pvsra = BinanceFuturesPVSRA(
+                    self.api_key, 
+                    self.api_secret, 
+                    self.test_mode
+                )
+                # Register PVSRA callback
+                self.pvsra.add_alert_callback(self.on_pvsra_signal)
+                logger.info("✅ PVSRA initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize PVSRA: {e}")
+                self.use_pvsra = False
+                self.pvsra = None
+        else:
+            self.pvsra = None
+            logger.info("ℹ️ PVSRA disabled or not available")
+
     def _log_configuration(self):
         """Log current configuration"""
         logger.info("🤖 Enhanced Bot Configuration:")
@@ -145,6 +190,14 @@ class EnhancedBinanceFuturesBot:
         logger.info(f"   Leverage: {self.leverage}x")
         logger.info(f"   Profit Threshold: {self.profit_threshold*100:.2f}%")
         logger.info(f"   Stop Loss Threshold: {self.stop_loss_threshold*100:.2f}%")
+        
+        # PVSRA configuration
+        if self.use_pvsra:
+            logger.info(f"   🎯 PVSRA Integration: Enabled (Weight: {self.pvsra_weight:.1f})")
+            logger.info(f"   🎯 PVSRA Confirmation Required: {self.require_pvsra_confirmation}")
+        else:
+            logger.info(f"   🎯 PVSRA Integration: Disabled")
+        
         logger.info(f"   Price Update Interval: {self.price_update_interval}s")
         logger.info(f"   Trade Cooldown: {self.trade_cooldown}s")
         logger.info(f"   🔒 Multiple Positions: {'ALLOWED' if self.allow_multiple_positions else 'BLOCKED'}")
@@ -234,79 +287,6 @@ class EnhancedBinanceFuturesBot:
             logger.error(f"Error getting balance: {e}")
             return 0
 
-    def get_open_positions(self):
-        """Get all open futures positions with proper error handling"""
-        try:
-            timestamp = self.get_server_time()
-            query_string = f"timestamp={timestamp}"
-            signature = self.generate_signature(query_string)
-            
-            headers = {'X-MBX-APIKEY': self.api_key}
-            
-            response = requests.get(
-                f"{self.base_url}/fapi/v2/positionRisk",
-                params={'timestamp': timestamp, 'signature': signature},
-                headers=headers,
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                positions = response.json()
-                # Filter to only open positions (non-zero position amount)
-                open_positions = []
-                for pos in positions:
-                    try:
-                        position_amt = float(pos.get('positionAmt', 0))
-                        if position_amt != 0:
-                            # Handle percentage field safely
-                            percentage = 0.0
-                            try:
-                                percentage = float(pos.get('percentage', 0.0))
-                            except (ValueError, TypeError, KeyError):
-                                percentage = 0.0
-                            
-                            open_positions.append({
-                                'symbol': pos.get('symbol', ''),
-                                'side': 'LONG' if position_amt > 0 else 'SHORT',
-                                'size': abs(position_amt),
-                                'entry_price': float(pos.get('entryPrice', 0.0)),
-                                'mark_price': float(pos.get('markPrice', 0.0)),
-                                'unrealized_pnl': float(pos.get('unRealizedProfit', 0.0)),
-                                'percentage': percentage
-                            })
-                    except (ValueError, TypeError, KeyError) as e:
-                        logger.warning(f"Error parsing position data: {e}")
-                        continue
-                
-                return open_positions            
-            else:
-                logger.error(f"❌ Failed to get positions: {response.text}")
-                return []
-                
-        except Exception as e:
-            logger.error(f"Error getting open positions: {e}")
-            return []
-    
-    def check_existing_position(self, symbol: str) -> Optional[Dict]:
-        """
-        Check if there's already an open position for the given symbol
-        
-        Returns:
-        - Dictionary with position information or None if no position
-        """
-        try:
-            open_positions = self.get_open_positions()
-            
-            for position in open_positions:
-                if position['symbol'] == symbol:
-                    return position
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error checking existing position: {e}")
-            return None
-
     def place_market_order(self, side: str, quantity: float) -> Dict:
         """
         Place a market order for futures trading
@@ -350,6 +330,20 @@ class EnhancedBinanceFuturesBot:
                 logger.info(f"✅ Market order executed: {side} {quantity} {self.symbol}")
                 logger.info(f"   Order ID: {order_result.get('orderId')}")
                 logger.info(f"   Status: {order_result.get('status')}")
+                
+                # Log to MongoDB
+                self._log_to_mongodb({
+                    'type': 'order_execution',
+                    'order_id': order_result.get('orderId'),
+                    'symbol': self.symbol,
+                    'side': side,
+                    'quantity': quantity,
+                    'order_type': 'MARKET',
+                    'status': order_result.get('status'),
+                    'timestamp': datetime.now(timezone.utc),
+                    'session_id': self.bot_session_id,
+                    'raw_response': order_result
+                })
                 
                 return {
                     'success': True,
@@ -429,9 +423,34 @@ class EnhancedBinanceFuturesBot:
             logger.error(f"Error calculating position size: {e}")
             return 0
 
+    def _log_to_mongodb(self, data):
+        """Log data to MongoDB with error handling"""
+        if self.collection is None:
+            return None
+        
+        try:
+            # Add trading mode and PVSRA information
+            if self.use_percentage_trading:
+                data["trading_mode"] = "percentage"
+                data["trading_mode_value"] = self.trade_amount_percentage
+            else:
+                data["trading_mode"] = "fixed"
+                data["trading_mode_value"] = self.trade_amount
+            
+            data["pvsra_enabled"] = self.use_pvsra
+            data["live_trading_enabled"] = self.enable_live_trading
+            if self.use_pvsra and self.last_pvsra_signal:
+                data["latest_pvsra_signal"] = self.last_pvsra_signal
+            
+            result = self.collection.insert_one(data)
+            return str(result.inserted_id)
+        except Exception as e:
+            logger.error(f"Error logging to MongoDB: {e}")
+            return None
+
     def should_enter_trade(self, action: str) -> Dict:
         """
-        Enhanced trade entry evaluation with position checking and better debugging
+        Enhanced trade entry evaluation with basic checks
         
         Args:
             action: 'BUY' or 'SELL'
@@ -439,16 +458,13 @@ class EnhancedBinanceFuturesBot:
         Returns:
             Dict with trade decision
         """
-        # CRITICAL: Check for existing positions first (SAFETY CHECK)
-        if not self.allow_multiple_positions:
-            existing_position = self.check_existing_position(self.symbol)
-            if existing_position:
-                return {
-                    'should_trade': False,
-                    'reason': f"Position exists: {existing_position['side']} {existing_position['size']} @ ${existing_position['entry_price']:.4f} (PnL: ${existing_position['unrealized_pnl']:.2f})",
-                    'confidence': 0.0,
-                    'existing_position': existing_position
-                }
+        # Basic checks
+        if time.time() - self.last_trade_time < self.trade_cooldown:
+            return {
+                'should_trade': False,
+                'reason': 'Trade cooldown active',
+                'confidence': 0.0
+            }
         
         if len(self.price_history) < 5:
             return {
@@ -461,28 +477,17 @@ class EnhancedBinanceFuturesBot:
         recent_prices = list(self.price_history)[-5:]
         price_change = (recent_prices[-1] - recent_prices[0]) / recent_prices[0]
         
-        # Check if price change is significant enough
-        if abs(price_change) < self.min_price_change:
-            return {
-                'should_trade': False,
-                'reason': f'Price change too small: {price_change*100:.3f}% (min: {self.min_price_change*100:.3f}%)',
-                'confidence': 0.0
-            }
-        
-        # Check cooldown AFTER we know there's a valid signal
-        time_since_last_trade = time.time() - self.last_trade_time
-        if time_since_last_trade < self.trade_cooldown:
-            return {
-                'should_trade': False,
-                'reason': f'Trade cooldown active: {time_since_last_trade:.1f}s / {self.trade_cooldown}s',
-                'confidence': 0.0
-            }
-        
         confidence = 0.6
         if action == 'BUY' and price_change > self.min_price_change:
             confidence = 0.8
         elif action == 'SELL' and price_change < -self.min_price_change:
             confidence = 0.8
+        elif abs(price_change) < self.min_price_change:
+            return {
+                'should_trade': False,
+                'reason': 'Price change too small',
+                'confidence': 0.0
+            }
         
         return {
             'should_trade': True,
@@ -597,13 +602,7 @@ if __name__ == "__main__":
                                 else:
                                     logger.warning("⚠️ Failed to calculate position size")
                             else:
-                                # More detailed logging for rejected trades
-                                if 'cooldown' in trade_decision['reason'].lower():
-                                    logger.debug(f"❌ Trade rejected: {trade_decision['reason']}")
-                                elif 'price change too small' in trade_decision['reason'].lower():
-                                    logger.debug(f"❌ Trade rejected: {trade_decision['reason']}")
-                                else:
-                                    logger.info(f"❌ Trade rejected: {trade_decision['reason']}")
+                                logger.debug(f"❌ Trade rejected: {trade_decision['reason']}")
                     
                     # Sleep before next iteration
                     time.sleep(bot.price_update_interval)
