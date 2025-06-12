@@ -307,7 +307,7 @@ def pvsra_scan_symbols():
         return jsonify({'error': 'PVSRA not available'}), 503
     
     try:
-        symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'DOTUSDT']
+        symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'DOTUSDT', 'SUIUSDC']
         interval = request.args.get('interval', '15m')
         
         scan_results = []
