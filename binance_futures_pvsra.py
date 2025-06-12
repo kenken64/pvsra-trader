@@ -14,7 +14,6 @@ import time
 from binance.client import Client
 from binance.enums import *
 from binance.exceptions import BinanceAPIException
-import binance.websockets as bws
 
 # Import the PVSRA class (assuming it's in pvsra.py)
 from pvsra import PVSRA

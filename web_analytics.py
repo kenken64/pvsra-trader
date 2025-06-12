@@ -1,15 +1,68 @@
-from flask import Flask, render_template, jsonify, send_file
+from flask import Flask, render_template, jsonify, send_file, request
 from analytics import TradingAnalytics
 import os
 from datetime import datetime
 import json
 import threading
 import time
+import pandas as pd
+
+# Import PVSRA modules
+try:
+    from binance_futures_pvsra import BinanceFuturesPVSRA
+    PVSRA_AVAILABLE = True
+    print("✅ PVSRA modules imported successfully")
+except ImportError as e:
+    PVSRA_AVAILABLE = False
+    print(f"⚠️ PVSRA modules not available: {e}")
+    print("PVSRA features will be disabled")
 
 app = Flask(__name__)
 
 # Global analytics instance
 analytics = TradingAnalytics()
+
+# Global PVSRA instance
+pvsra = None
+pvsra_alerts = []
+MAX_ALERTS = 50
+
+def initialize_pvsra():
+    """Initialize PVSRA if available"""
+    global pvsra
+    if PVSRA_AVAILABLE:
+        try:
+            # Try to get API keys from environment
+            api_key = os.getenv('BINANCE_API_KEY')
+            api_secret = os.getenv('BINANCE_API_SECRET')
+            test_mode = os.getenv('TEST_MODE', 'True').lower() == 'true'
+            
+            if api_key and api_secret:
+                pvsra = BinanceFuturesPVSRA(api_key, api_secret, test_mode)
+                pvsra.add_alert_callback(store_pvsra_alert)
+                print("✅ PVSRA initialized successfully")
+            else:
+                print("⚠️ PVSRA API keys not found in environment")
+        except Exception as e:
+            print(f"❌ Failed to initialize PVSRA: {e}")
+    else:
+        print("ℹ️ PVSRA not available")
+
+def store_pvsra_alert(symbol: str, alert: dict):
+    """Store PVSRA alerts in memory"""
+    global pvsra_alerts
+    pvsra_alerts.append({
+        'timestamp': datetime.now(),
+        'symbol': symbol,
+        **alert
+    })
+    
+    # Keep only last MAX_ALERTS
+    if len(pvsra_alerts) > MAX_ALERTS:
+        pvsra_alerts = pvsra_alerts[-MAX_ALERTS:]
+
+# Initialize PVSRA on startup
+initialize_pvsra()
 
 @app.route('/')
 def dashboard():
@@ -69,10 +122,27 @@ def get_analytics():
                 'price': last_order['current_price'],
                 'timestamp': last_order['timestamp'].strftime('%Y-%m-%d %H:%M:%S UTC')
             }
-        
-        # Prepare chart data
+          # Prepare chart data
         chart_data = prepare_chart_data(orders, closures)
         data['charts'] = chart_data
+        
+        # Add PVSRA data if available
+        if pvsra:
+            data['pvsra'] = {
+                'available': True,
+                'recent_alerts': len(pvsra_alerts),
+                'latest_alert': None
+            }
+            
+            if pvsra_alerts:
+                latest_alert = pvsra_alerts[-1]
+                data['pvsra']['latest_alert'] = {
+                    'symbol': latest_alert['symbol'],
+                    'alert': latest_alert.get('alert', ''),
+                    'timestamp': latest_alert['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+                }
+        else:
+            data['pvsra'] = {'available': False}
         
         return jsonify(data)
     
@@ -156,8 +226,140 @@ def health():
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
-        'mongodb_connected': analytics.collection is not None
+        'mongodb_connected': analytics.collection is not None,
+        'pvsra_available': pvsra is not None
     })
+
+@app.route('/api/pvsra/analyze')
+def pvsra_analyze():
+    """PVSRA analysis endpoint"""
+    if not pvsra:
+        return jsonify({'error': 'PVSRA not available'}), 503
+    
+    try:
+        symbol = request.args.get('symbol', 'BTCUSDT')
+        interval = request.args.get('interval', '5m')
+        limit = int(request.args.get('limit', 100))
+        
+        # Get PVSRA analysis
+        result = pvsra.analyze_symbol(symbol, interval, limit)
+        
+        if result.empty:
+            return jsonify({'error': 'No data available'}), 404
+        
+        # Prepare chart data
+        chart_data = {
+            'timestamps': result.index.strftime('%Y-%m-%d %H:%M:%S').tolist(),
+            'ohlcv': {
+                'open': result['open'].tolist(),
+                'high': result['high'].tolist(),
+                'low': result['low'].tolist(),
+                'close': result['close'].tolist(),
+                'volume': result['volume'].tolist()
+            },
+            'pvsra': {
+                'colors': result['candle_color'].tolist(),
+                'conditions': result['condition'].tolist(),
+                'is_climax': result['is_climax'].tolist(),
+                'is_rising': result['is_rising'].tolist(),
+                'is_bullish': result['is_bullish'].tolist(),
+                'alerts': result['alert'].tolist()
+            },
+            'latest': {
+                'price': float(result['close'].iloc[-1]),
+                'condition': result['condition'].iloc[-1],
+                'alert': result['alert'].iloc[-1] if result['alert'].iloc[-1] else None,
+                'volume_ratio': float(result['volume'].iloc[-1] / result['avg_volume'].iloc[-1])
+            }
+        }
+        
+        return jsonify(chart_data)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/pvsra/alerts')
+def pvsra_get_alerts():
+    """Get recent PVSRA alerts"""
+    try:
+        alerts_data = []
+        for alert in pvsra_alerts[-20:]:  # Last 20 alerts
+            alerts_data.append({
+                'timestamp': alert['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
+                'symbol': alert['symbol'],
+                'alert': alert.get('alert', ''),
+                'condition': alert.get('condition', ''),
+                'price': alert.get('price', 0)
+            })
+        
+        return jsonify({
+            'alerts': alerts_data,
+            'total_count': len(pvsra_alerts)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/pvsra/scan')
+def pvsra_scan_symbols():
+    """Scan multiple symbols for PVSRA patterns"""
+    if not pvsra:
+        return jsonify({'error': 'PVSRA not available'}), 503
+    
+    try:
+        symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'DOTUSDT']
+        interval = request.args.get('interval', '15m')
+        
+        scan_results = []
+        
+        for symbol in symbols:
+            try:
+                result = pvsra.analyze_symbol(symbol, interval, 20)
+                if not result.empty:
+                    latest = result.iloc[-1]
+                    
+                    scan_results.append({
+                        'symbol': symbol,
+                        'price': float(latest['close']),
+                        'condition': latest['condition'],
+                        'alert': latest['alert'] if latest['alert'] else None,
+                        'is_climax': bool(latest['is_climax']),
+                        'is_rising': bool(latest['is_rising']),
+                        'volume_ratio': float(latest['volume'] / latest['avg_volume']),
+                        'color': latest['candle_color']
+                    })
+            except Exception as e:
+                print(f"Error scanning {symbol}: {e}")
+                continue
+        
+        return jsonify({
+            'scan_results': scan_results,
+            'scan_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/pvsra/start_monitoring')
+def pvsra_start_monitoring():
+    """Start real-time PVSRA monitoring"""
+    if not pvsra:
+        return jsonify({'error': 'PVSRA not available'}), 503
+    
+    try:
+        symbol = request.args.get('symbol', 'BTCUSDT')
+        interval = request.args.get('interval', '1m')
+        
+        pvsra.start_realtime_analysis(symbol, interval)
+        
+        return jsonify({
+            'message': f'Started monitoring {symbol} on {interval}',
+            'symbol': symbol,
+            'interval': interval
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     print("🚀 Starting Trading Analytics Web Dashboard...")

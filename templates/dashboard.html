@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📊 Trading Analytics Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>📊 Trading Analytics Dashboard</title>    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -108,10 +108,78 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-        
-        .auto-refresh {
+          .auto-refresh {
             font-size: 0.9rem;
             opacity: 0.8;
+        }
+        
+        .pvsra-card {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .pvsra-alert {
+            background: rgba(255, 193, 7, 0.2);
+            border-left: 4px solid #ffc107;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        
+        .pvsra-alert.bullish {
+            background: rgba(40, 167, 69, 0.2);
+            border-left-color: #28a745;
+        }
+        
+        .pvsra-alert.bearish {
+            background: rgba(220, 53, 69, 0.2);
+            border-left-color: #dc3545;
+        }
+        
+        .symbol-scan-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            margin: 5px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+        
+        .climax-indicator {
+            background: #dc3545;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+        }
+          .rising-indicator {
+            background: #007bff;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+        }
+        
+        .nav-pills .nav-link {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            margin: 0 5px;
+            border-radius: 25px;
+        }
+        
+        .nav-pills .nav-link.active {
+            background: rgba(255, 255, 255, 0.3);
+            color: white;
+        }
+        
+        .nav-pills .nav-link:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
         }
     </style>
 </head>
@@ -155,8 +223,32 @@
                     <div class="stat-value" id="sellOrders">-</div>
                     <div class="stat-label"><i class="fas fa-arrow-down text-danger"></i> SELL Orders</div>
                 </div>
+            </div>        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="stat-card">
+                    <ul class="nav nav-pills justify-content-center" id="mainTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="trading-tab" data-bs-toggle="pill" data-bs-target="#trading" type="button" role="tab">
+                                <i class="fas fa-chart-line"></i> Trading Analytics
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="pvsra-tab" data-bs-toggle="pill" data-bs-target="#pvsra" type="button" role="tab">
+                                <i class="fas fa-analytics"></i> PVSRA Analysis
+                            </button>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="mainTabContent">
+            <!-- Trading Analytics Tab -->
+            <div class="tab-pane fade show active" id="trading" role="tabpanel">
 
         <!-- Charts Row -->
         <div class="row">
@@ -228,9 +320,7 @@
                     </div>
                 </div>
             </div>
-        </div>
-
-        <!-- Export Section -->
+        </div>        <!-- Export Section -->
         <div class="row">
             <div class="col-12">
                 <div class="stat-card text-center">
@@ -244,6 +334,117 @@
                 </div>
             </div>
         </div>
+
+            </div> <!-- End Trading Analytics Tab -->
+
+            <!-- PVSRA Analysis Tab -->
+            <div class="tab-pane fade" id="pvsra" role="tabpanel">
+                
+                <!-- PVSRA Controls -->
+                <div class="row mb-4">
+                    <div class="col-md-8">
+                        <div class="pvsra-card">
+                            <h5><i class="fas fa-cog"></i> PVSRA Controls</h5>
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <label class="form-label">Symbol</label>
+                                    <select class="form-select" id="pvsraSymbol">
+                                        <option value="BTCUSDT">BTCUSDT</option>
+                                        <option value="ETHUSDT">ETHUSDT</option>
+                                        <option value="BNBUSDT">BNBUSDT</option>
+                                        <option value="SOLUSDT">SOLUSDT</option>
+                                        <option value="ADAUSDT">ADAUSDT</option>
+                                        <option value="DOTUSDT">DOTUSDT</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Timeframe</label>
+                                    <select class="form-select" id="pvsraInterval">
+                                        <option value="1m">1 Minute</option>
+                                        <option value="3m">3 Minutes</option>
+                                        <option value="5m" selected>5 Minutes</option>
+                                        <option value="15m">15 Minutes</option>
+                                        <option value="30m">30 Minutes</option>
+                                        <option value="1h">1 Hour</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Candles</label>
+                                    <input type="number" class="form-control" id="pvsraLimit" value="100" min="50" max="200">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Actions</label>
+                                    <div>
+                                        <button class="btn btn-primary btn-sm me-2" onclick="loadPVSRAChart()">
+                                            <i class="fas fa-chart-line"></i> Analyze
+                                        </button>
+                                        <button class="btn btn-success btn-sm" onclick="startPVSRAMonitoring()">
+                                            <i class="fas fa-play"></i> Monitor
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="pvsra-card">
+                            <h5><i class="fas fa-bell"></i> Latest Alert</h5>
+                            <div id="latestPVSRAAlert">
+                                <div class="text-center py-3">
+                                    <i class="fas fa-info-circle"></i>
+                                    <p class="mb-0">No recent alerts</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PVSRA Chart -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="pvsra-card">
+                            <h5><i class="fas fa-chart-candlestick"></i> PVSRA Chart Analysis</h5>
+                            <div id="pvsraChart" style="height: 600px;">
+                                <div class="text-center py-5">
+                                    <div class="loading-spinner"></div>
+                                    <p class="mt-2">Click "Analyze" to load PVSRA chart</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Market Scan and Alerts -->
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="pvsra-card">
+                            <h5><i class="fas fa-search"></i> Multi-Symbol Scan</h5>
+                            <button class="btn btn-info btn-sm mb-3" onclick="scanPVSRASymbols()">
+                                <i class="fas fa-sync"></i> Scan All Symbols
+                            </button>
+                            <div id="pvsraScanResults">
+                                <div class="text-center py-3">
+                                    <i class="fas fa-search"></i>
+                                    <p class="mb-0">Click "Scan All Symbols" to start</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="pvsra-card">
+                            <h5><i class="fas fa-history"></i> Recent Alerts</h5>
+                            <div id="pvsraAlertsList" style="max-height: 400px; overflow-y: auto;">
+                                <div class="text-center py-3">
+                                    <div class="loading-spinner"></div>
+                                    <p class="mt-2">Loading alerts...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div> <!-- End PVSRA Tab -->
+        </div> <!-- End Tab Content -->
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -412,9 +613,29 @@
                 const sl = data.exit_analysis.stop_losses;
                 if (pt.count > 0 && sl.count > 0) {
                     const riskReward = Math.abs(pt.avg_profit / sl.avg_loss);
-                    document.getElementById('riskReward').textContent = '1:' + riskReward.toFixed(2);
-                } else {
+                    document.getElementById('riskReward').textContent = '1:' + riskReward.toFixed(2);                } else {
                     document.getElementById('riskReward').textContent = 'N/A';
+                }
+            }
+            
+            // Update PVSRA status in header if available
+            if (data.pvsra) {
+                const pvsraStatus = data.pvsra.available ? 
+                    `<span class="badge bg-success ms-2">PVSRA Active</span>` : 
+                    `<span class="badge bg-warning ms-2">PVSRA Offline</span>`;
+                
+                // Add PVSRA status to header if not already present
+                const header = document.querySelector('.dashboard-header h1');
+                if (!header.innerHTML.includes('PVSRA')) {
+                    header.innerHTML += pvsraStatus;
+                }
+                
+                // Update tab badge with alert count
+                if (data.pvsra.available && data.pvsra.recent_alerts > 0) {
+                    const pvsraTab = document.getElementById('pvsra-tab');
+                    if (!pvsraTab.innerHTML.includes('badge')) {
+                        pvsraTab.innerHTML += ` <span class="badge bg-danger">${data.pvsra.recent_alerts}</span>`;
+                    }
                 }
             }
         }
@@ -439,16 +660,230 @@
                 const spinner = document.getElementById('loadingSpinner');
                 spinner.style.display = 'none';
             }
-        }
-
-        // Initialize dashboard
+        }        // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
             initCharts();
             fetchAnalytics();
+            loadPVSRAAlerts();
             
             // Auto-refresh every 10 seconds
             setInterval(fetchAnalytics, 10000);
+            setInterval(loadPVSRAAlerts, 15000); // Refresh PVSRA alerts every 15 seconds
         });
+
+        // PVSRA Functions
+        async function loadPVSRAChart() {
+            const symbol = document.getElementById('pvsraSymbol').value;
+            const interval = document.getElementById('pvsraInterval').value;
+            const limit = document.getElementById('pvsraLimit').value;
+            
+            const chartDiv = document.getElementById('pvsraChart');
+            chartDiv.innerHTML = '<div class="text-center py-5"><div class="loading-spinner"></div><p class="mt-2">Loading PVSRA analysis...</p></div>';
+            
+            try {
+                const response = await fetch(`/api/pvsra/analyze?symbol=${symbol}&interval=${interval}&limit=${limit}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    chartDiv.innerHTML = `<div class="text-center py-5"><i class="fas fa-exclamation-triangle text-warning"></i><p class="mt-2">Error: ${data.error}</p></div>`;
+                    return;
+                }
+                
+                // Create candlestick chart with Plotly
+                const trace1 = {
+                    x: data.timestamps,
+                    open: data.ohlcv.open,
+                    high: data.ohlcv.high,
+                    low: data.ohlcv.low,
+                    close: data.ohlcv.close,
+                    type: 'candlestick',
+                    name: symbol,
+                    increasing: {line: {color: '#00ff00'}},
+                    decreasing: {line: {color: '#ff0000'}}
+                };
+                
+                const trace2 = {
+                    x: data.timestamps,
+                    y: data.ohlcv.volume,
+                    type: 'bar',
+                    name: 'Volume',
+                    yaxis: 'y2',
+                    marker: {
+                        color: data.pvsra.colors
+                    }
+                };
+                
+                // Add climax markers
+                const climaxIndices = data.pvsra.is_climax.map((isClimax, index) => isClimax ? index : null).filter(i => i !== null);
+                const climaxTrace = {
+                    x: climaxIndices.map(i => data.timestamps[i]),
+                    y: climaxIndices.map(i => data.ohlcv.high[i] * 1.01),
+                    mode: 'markers+text',
+                    type: 'scatter',
+                    name: 'Climax',
+                    marker: {
+                        size: 15,
+                        symbol: 'triangle-down',
+                        color: 'red'
+                    },
+                    text: 'C',
+                    textposition: 'top center'
+                };
+                
+                const layout = {
+                    title: `${symbol} PVSRA Analysis (${interval})`,
+                    dragmode: 'zoom',
+                    margin: { r: 10, t: 25, b: 40, l: 60 },
+                    showlegend: false,
+                    paper_bgcolor: 'rgba(0,0,0,0)',
+                    plot_bgcolor: 'rgba(0,0,0,0)',
+                    font: { color: 'white' },
+                    xaxis: {
+                        autorange: true,
+                        domain: [0, 1],
+                        range: [data.timestamps[0], data.timestamps[data.timestamps.length - 1]],
+                        rangeslider: { range: [data.timestamps[0], data.timestamps[data.timestamps.length - 1]] },
+                        type: 'date',
+                        gridcolor: 'rgba(255,255,255,0.1)',
+                        color: 'white'
+                    },
+                    yaxis: {
+                        autorange: true,
+                        domain: [0.3, 1],
+                        type: 'linear',
+                        gridcolor: 'rgba(255,255,255,0.1)',
+                        color: 'white'
+                    },
+                    yaxis2: {
+                        domain: [0, 0.25],
+                        side: 'right',
+                        type: 'linear',
+                        gridcolor: 'rgba(255,255,255,0.1)',
+                        color: 'white'
+                    }
+                };
+                
+                Plotly.newPlot('pvsraChart', [trace1, trace2, climaxTrace], layout, {responsive: true});
+                
+                // Update latest alert info
+                const latestDiv = document.getElementById('latestPVSRAAlert');
+                if (data.latest.alert) {
+                    const alertClass = data.latest.alert.includes('Bull') ? 'bullish' : 'bearish';
+                    latestDiv.innerHTML = `
+                        <div class="pvsra-alert ${alertClass}">
+                            <strong>${data.latest.alert}</strong><br>
+                            <small>Price: $${data.latest.price.toFixed(4)} | Vol Ratio: ${data.latest.volume_ratio.toFixed(1)}x</small>
+                        </div>
+                    `;
+                } else {
+                    latestDiv.innerHTML = `
+                        <div class="text-center py-3">
+                            <i class="fas fa-info-circle"></i>
+                            <p class="mb-0">No alerts for ${symbol}</p>
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                console.error('Error loading PVSRA chart:', error);
+                chartDiv.innerHTML = `<div class="text-center py-5"><i class="fas fa-exclamation-triangle text-danger"></i><p class="mt-2">Failed to load chart</p></div>`;
+            }
+        }
+
+        async function scanPVSRASymbols() {
+            const resultsDiv = document.getElementById('pvsraScanResults');
+            resultsDiv.innerHTML = '<div class="text-center py-3"><div class="loading-spinner"></div><p class="mt-2">Scanning symbols...</p></div>';
+            
+            try {
+                const response = await fetch('/api/pvsra/scan?interval=15m');
+                const data = await response.json();
+                
+                if (data.error) {
+                    resultsDiv.innerHTML = `<div class="text-center py-3"><i class="fas fa-exclamation-triangle text-warning"></i><p class="mt-2">Error: ${data.error}</p></div>`;
+                    return;
+                }
+                
+                if (data.scan_results.length === 0) {
+                    resultsDiv.innerHTML = '<div class="text-center py-3"><p>No results found</p></div>';
+                    return;
+                }
+                
+                resultsDiv.innerHTML = data.scan_results.map(result => {
+                    let indicators = '';
+                    if (result.is_climax) indicators += '<span class="climax-indicator">CLIMAX</span> ';
+                    if (result.is_rising) indicators += '<span class="rising-indicator">RISING</span> ';
+                    if (result.alert) indicators += `<span class="badge bg-warning">${result.alert}</span>`;
+                    
+                    return `
+                        <div class="symbol-scan-item">
+                            <div>
+                                <strong>${result.symbol}</strong><br>
+                                <small>$${result.price.toFixed(4)} | Vol: ${result.volume_ratio.toFixed(1)}x</small>
+                            </div>
+                            <div class="text-end">
+                                ${indicators}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+            } catch (error) {
+                console.error('Error scanning symbols:', error);
+                resultsDiv.innerHTML = '<div class="text-center py-3"><i class="fas fa-exclamation-triangle text-danger"></i><p class="mt-2">Scan failed</p></div>';
+            }
+        }
+
+        async function loadPVSRAAlerts() {
+            try {
+                const response = await fetch('/api/pvsra/alerts');
+                const data = await response.json();
+                
+                const alertsDiv = document.getElementById('pvsraAlertsList');
+                
+                if (data.error) {
+                    alertsDiv.innerHTML = `<div class="text-center py-3"><i class="fas fa-exclamation-triangle text-warning"></i><p class="mt-2">Error loading alerts</p></div>`;
+                    return;
+                }
+                
+                if (data.alerts.length === 0) {
+                    alertsDiv.innerHTML = '<div class="text-center py-3"><p>No recent alerts</p></div>';
+                    return;
+                }
+                
+                alertsDiv.innerHTML = data.alerts.map(alert => {
+                    const alertClass = alert.alert.includes('Bull') ? 'bullish' : 'bearish';
+                    return `
+                        <div class="pvsra-alert ${alertClass}">
+                            <strong>${alert.symbol}</strong><br>
+                            ${alert.alert}<br>
+                            <small>${alert.timestamp} | $${alert.price.toFixed(4)}</small>
+                        </div>
+                    `;
+                }).join('');
+                
+            } catch (error) {
+                console.error('Error loading PVSRA alerts:', error);
+            }
+        }
+
+        async function startPVSRAMonitoring() {
+            const symbol = document.getElementById('pvsraSymbol').value;
+            const interval = document.getElementById('pvsraInterval').value;
+            
+            try {
+                const response = await fetch(`/api/pvsra/start_monitoring?symbol=${symbol}&interval=${interval}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert(`Error: ${data.error}`);
+                } else {
+                    alert(`Started monitoring ${symbol} on ${interval} timeframe`);
+                }
+            } catch (error) {
+                console.error('Error starting monitoring:', error);
+                alert('Failed to start monitoring');
+            }
+        }
     </script>
 </body>
 </html>
