@@ -5,17 +5,16 @@ Fixed version with proper position checking and cooldown handling
 """
 
 import os
-import json
 import time
 import hmac
 import hashlib
 import requests
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 import logging
 from collections import deque
 from pymongo import MongoClient
-from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
-from typing import Dict, List, Optional
+from pymongo.errors import ConnectionFailure
+from typing import Dict, Optional
 
 # Try to load environment variables from .env file
 try:

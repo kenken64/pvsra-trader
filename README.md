@@ -28,6 +28,7 @@ This project contains comprehensive documentation across multiple markdown files
 
 | 📄 **Document** | 🎯 **Purpose** | 📝 **Description** | 🔗 **Quick Access** |
 |---|---|---|---|
+| [**BOT_DOCUMENTATION.md**](./BOT_DOCUMENTATION.md) | 🤖 **Complete Bot Guide** | **MASTER DOCUMENTATION** - Comprehensive bot reference with setup, configuration, trading logic, safety features, and troubleshooting | [📖 View →](./BOT_DOCUMENTATION.md) |
 | [**WEB_DASHBOARD_README.md**](./WEB_DASHBOARD_README.md) | 📊 **Dashboard Guide** | Complete guide to the trading analytics web dashboard with real-time monitoring, charts, and performance metrics | [View →](./WEB_DASHBOARD_README.md) |
 | [**PVSRA_INTEGRATION_COMPLETE.md**](./PVSRA_INTEGRATION_COMPLETE.md) | 🎉 **Success Summary** | Final completion status of PVSRA integration with live dashboard at `http://localhost:5000` | [View →](./PVSRA_INTEGRATION_COMPLETE.md) |
 | [**PVSRA_DASHBOARD_MERGER_SUMMARY.md**](./PVSRA_DASHBOARD_MERGER_SUMMARY.md) | 🚀 **Integration Process** | Technical implementation details of merging Streamlit PVSRA dashboard into Flask web analytics | [View →](./PVSRA_DASHBOARD_MERGER_SUMMARY.md) |
@@ -40,6 +41,9 @@ This project contains comprehensive documentation across multiple markdown files
 ---
 
 ## 🎯 Documentation Categories
+
+### 🤖 **Core Bot Documentation**
+- [**BOT_DOCUMENTATION.md**](./BOT_DOCUMENTATION.md) - **📖 MASTER GUIDE** - Complete bot reference and manual
 
 ### 🚀 **Getting Started**
 - [**CROSS_PLATFORM_README.md**](./CROSS_PLATFORM_README.md) - Setup instructions for all operating systems
@@ -114,6 +118,7 @@ python web_analytics.py
 - **MongoDB connection**: Ensure MongoDB is running
 
 ### **📞 Support Resources**
+- **📖 MASTER GUIDE**: Check [BOT_DOCUMENTATION.md](./BOT_DOCUMENTATION.md) for complete bot reference
 - Check individual markdown files for specific feature documentation
 - Review error logs in the terminal output
 - Verify API credentials in `.env` file
